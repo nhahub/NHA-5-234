@@ -1,0 +1,33 @@
+# Installs k3s (lightweight Kubernetes) and downloads the kubeconfig.
+- hosts: all
+  become: true
+  tasks:
+    - name: Wait for the server to accept SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name: [curl, ca-certificates]
+        update_cache: true
+
+    - name: Install k3s
+      ansible.builtin.shell: >
+        curl -sfL https://get.k3s.io |
+        INSTALL_K3S_EXEC="--tls-san {{ inventory_hostname }} --write-kubeconfig-mode 644 --disable traefik --disable servicelb" sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait until the node is Ready
+      ansible.builtin.command: k3s kubectl get nodes
+      register: nodes
+      until: "' Ready' in nodes.stdout"
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Download kubeconfig
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ kubeconfig_dest }}"
+        flat: true

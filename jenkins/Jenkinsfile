@@ -1,0 +1,38 @@
+// Pipeline job named "autodeployers" ("Pipeline script from SCM", path: jenkins/Jenkinsfile).
+// Credentials: dockerhub (username + token). Only for TARGET=aws also: aws-creds (access key/secret) and aws-ssh (private key).
+pipeline {
+  agent any
+  parameters {
+    string(name: 'PROJECT_NAME', defaultValue: '')
+    string(name: 'REPO_URL', defaultValue: '')
+    choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'])
+    string(name: 'REPLICAS', defaultValue: '1')
+    string(name: 'APP_PORT', defaultValue: '3000')
+    string(name: 'NODE_PORT', defaultValue: '30100')
+    choice(name: 'TARGET', choices: ['microk8s', 'aws'])
+  }
+  environment {
+    DATA_DIR = '/var/lib/autodeployers'   // must be the same folder the backend uses
+  }
+  stages {
+    stage('Run pipeline') {
+      steps {
+        script {
+          def creds = [usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_TOKEN')]
+          if (params.TARGET == 'aws') {
+            creds += [
+              usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY'),
+              sshUserPrivateKey(credentialsId: 'aws-ssh', keyFileVariable: 'SSH_KEY_PATH')
+            ]
+          }
+          withCredentials(creds) {
+            sh 'bash scripts/provision.sh'
+            sh 'bash scripts/configure.sh'
+            sh 'bash scripts/build.sh'
+            sh 'bash scripts/deploy.sh'
+          }
+        }
+      }
+    }
+  }
+}
